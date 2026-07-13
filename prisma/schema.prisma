@@ -13,6 +13,21 @@ enum UserStatus {
   DELETED
 }
 
+enum ExamStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum QuestionStatus {
+  DRAFT
+  ANALYSIS_PENDING
+  ANALYZING
+  ANALYSIS_FAILED
+  ANALYSIS_SUCCEEDED
+  CONFIRMED
+  DELETED
+}
+
 model User {
   id               String           @id @default(uuid()) @db.Uuid
   wechatOpenidHash String           @unique @map("wechat_openid_hash") @db.VarChar(64)
@@ -23,8 +38,53 @@ model User {
   updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt        DateTime?        @map("deleted_at") @db.Timestamptz(3)
   refreshSessions  RefreshSession[]
+  questions        Question[]
 
   @@map("users")
+}
+
+model Exam {
+  id        String     @id @default(uuid()) @db.Uuid
+  code      String     @unique @db.VarChar(64)
+  name      String     @db.VarChar(100)
+  status    ExamStatus @default(ACTIVE)
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  questions Question[]
+
+  @@map("exams")
+}
+
+model Question {
+  id                   String         @id @default(uuid()) @db.Uuid
+  userId               String         @map("user_id") @db.Uuid
+  examId               String         @map("exam_id") @db.Uuid
+  clientRequestId      String         @map("client_request_id") @db.Uuid
+  imageObjectKey       String         @unique @map("image_object_key") @db.VarChar(512)
+  imageMimeType        String         @map("image_mime_type") @db.VarChar(64)
+  imageSizeBytes       Int            @map("image_size_bytes")
+  imageWidth           Int            @map("image_width")
+  imageHeight          Int            @map("image_height")
+  source               String?        @db.VarChar(200)
+  note                 String?        @db.VarChar(200)
+  questionType         String?        @map("question_type") @db.VarChar(64)
+  questionText         String?        @map("question_text") @db.Text
+  optionsJson          Json?          @map("options_json")
+  userAnswer           String?        @map("user_answer") @db.VarChar(20)
+  correctAnswer        String?        @map("correct_answer") @db.VarChar(20)
+  status               QuestionStatus @default(DRAFT)
+  imageDeletionPending Boolean        @default(false) @map("image_deletion_pending")
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt            DateTime?      @map("deleted_at") @db.Timestamptz(3)
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam                 Exam           @relation(fields: [examId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, clientRequestId])
+  @@index([userId, status, createdAt(sort: Desc)])
+  @@index([examId, questionType])
+  @@index([imageDeletionPending, deletedAt])
+  @@map("questions")
 }
 
 model RefreshSession {

@@ -10,6 +10,7 @@ import {
   WECHAT_AUTH_CLIENT,
   type WechatAuthClient,
 } from '../src/modules/wechat/wechat-auth-client.interface';
+import { S3ObjectStorageService } from '../src/modules/storage/s3-object-storage.service';
 
 interface AuthResponse {
   accessToken: string;
@@ -34,6 +35,12 @@ describe('Authentication (e2e)', () => {
     })
       .overrideProvider(WECHAT_AUTH_CLIENT)
       .useValue(wechatAuthClient)
+      .overrideProvider(S3ObjectStorageService)
+      .useValue({
+        putPrivateObject: jest.fn(),
+        deleteObject: jest.fn(),
+        createPresignedGetUrl: jest.fn(),
+      })
       .compile();
 
     app = moduleFixture.createNestApplication();
