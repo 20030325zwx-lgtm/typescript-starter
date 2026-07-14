@@ -58,6 +58,39 @@ export const environmentSchema = Joi.object({
     .max(100000000)
     .default(40000000),
   UPLOAD_DAILY_LIMIT: Joi.number().integer().min(1).max(1000).default(30),
+  REDIS_URL: Joi.string()
+    .uri({ scheme: ['redis', 'rediss'] })
+    .required(),
+  ANALYSIS_QUEUE_NAME: Joi.string().min(1).max(100).default('analysis'),
+  ANALYSIS_QUEUE_ATTEMPTS: Joi.number().integer().min(1).max(10).default(3),
+  ANALYSIS_QUEUE_CONCURRENCY: Joi.number().integer().min(1).max(20).default(1),
+  ANALYSIS_RECONCILE_INTERVAL_MS: Joi.number()
+    .integer()
+    .min(5000)
+    .max(3600000)
+    .default(30000),
+  ANALYSIS_WORKER_ENABLED: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(false),
+  ANALYSIS_IDEMPOTENCY_SECRET: secret,
+  DIFY_BASE_URL: Joi.string().uri().required(),
+  DIFY_ANALYSIS_API_KEY: Joi.string().allow('').default(''),
+  DIFY_ANALYSIS_TIMEOUT_MS: Joi.number()
+    .integer()
+    .min(5000)
+    .max(300000)
+    .default(90000),
+  DIFY_ANALYSIS_OUTPUT_KEY: Joi.string()
+    .min(1)
+    .max(100)
+    .default('analysis_result'),
+  DIFY_ANALYSIS_WORKFLOW_VERSION: Joi.string().min(1).max(64).required(),
+  DIFY_ANALYSIS_PROMPT_VERSION: Joi.string().min(1).max(64).required(),
+  DIFY_ANALYSIS_MODEL_NAME: Joi.string().min(1).max(100).required(),
+  DIFY_ANALYSIS_SCHEMA_VERSION: Joi.string().valid('1.0').default('1.0'),
+  DIFY_KNOWLEDGE_BASE_VERSION: Joi.string().allow('').max(64).default(''),
+  DIFY_ANSWER_CONFIDENCE_THRESHOLD: Joi.number().min(0).max(1).default(0.8),
   LOG_LEVEL: Joi.string()
     .valid('fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent')
     .default('info'),
@@ -68,11 +101,18 @@ export const environmentSchema = Joi.object({
     value.JWT_REFRESH_SECRET,
     value.WECHAT_OPENID_HASH_SECRET,
     value.TOKEN_HASH_SECRET,
+    value.ANALYSIS_IDEMPOTENCY_SECRET,
   ];
 
   if (new Set(secrets).size !== secrets.length) {
     return helpers.error('any.custom', {
       message: 'JWT and hashing secrets must be different values',
+    });
+  }
+
+  if (value.ANALYSIS_WORKER_ENABLED && !value.DIFY_ANALYSIS_API_KEY) {
+    return helpers.error('any.custom', {
+      message: 'DIFY_ANALYSIS_API_KEY is required when the worker is enabled',
     });
   }
 

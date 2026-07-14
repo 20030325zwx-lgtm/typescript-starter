@@ -26,6 +26,7 @@ const sampleQuestion = {
   optionsJson: null,
   userAnswer: 'C',
   correctAnswer: null,
+  contentRevision: 1,
   status: QuestionStatus.DRAFT,
   imageDeletionPending: false,
   createdAt: now,
@@ -37,10 +38,20 @@ const sampleQuestion = {
 describe('QuestionsService', () => {
   const questionUpdateManyMock = jest.fn<
     Promise<{ count: number }>,
-    [{ where: unknown; data: { imageDeletionPending?: boolean } }]
+    [
+      {
+        where: unknown;
+        data: {
+          imageDeletionPending?: boolean;
+          contentRevision?: { increment: number };
+          status?: QuestionStatus;
+        };
+      },
+    ]
   >();
   const question = {
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
     count: jest.fn(),
     create: jest.fn(),
     findMany: jest.fn(),
@@ -156,5 +167,22 @@ describe('QuestionsService', () => {
       service.delete(sampleQuestion.userId, sampleQuestion.id),
     ).rejects.toMatchObject({ code: 'QUESTION_NOT_FOUND' });
     expect(deleteObjectMock).not.toHaveBeenCalled();
+  });
+
+  it('increments the content revision and invalidates analysis on edit', async () => {
+    questionUpdateManyMock.mockResolvedValue({ count: 1 });
+    question.findFirst.mockResolvedValue({ ...sampleQuestion, note: '新备注' });
+    createPresignedGetUrlMock.mockResolvedValue(
+      'https://storage.example/signed',
+    );
+
+    await service.update(sampleQuestion.userId, sampleQuestion.id, {
+      note: '新备注',
+    });
+
+    expect(questionUpdateManyMock.mock.calls[0]?.[0].data).toMatchObject({
+      contentRevision: { increment: 1 },
+      status: QuestionStatus.DRAFT,
+    });
   });
 });

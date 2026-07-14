@@ -28,6 +28,19 @@ enum QuestionStatus {
   DELETED
 }
 
+enum KnowledgePointStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AnalysisJobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
 model User {
   id               String           @id @default(uuid()) @db.Uuid
   wechatOpenidHash String           @unique @map("wechat_openid_hash") @db.VarChar(64)
@@ -39,52 +52,149 @@ model User {
   deletedAt        DateTime?        @map("deleted_at") @db.Timestamptz(3)
   refreshSessions  RefreshSession[]
   questions        Question[]
+  analysisJobs     AnalysisJob[]
 
   @@map("users")
 }
 
 model Exam {
-  id        String     @id @default(uuid()) @db.Uuid
-  code      String     @unique @db.VarChar(64)
-  name      String     @db.VarChar(100)
-  status    ExamStatus @default(ACTIVE)
-  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
-  questions Question[]
+  id              String           @id @default(uuid()) @db.Uuid
+  code            String           @unique @db.VarChar(64)
+  name            String           @db.VarChar(100)
+  status          ExamStatus       @default(ACTIVE)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  questions       Question[]
+  knowledgePoints KnowledgePoint[]
 
   @@map("exams")
 }
 
 model Question {
-  id                   String         @id @default(uuid()) @db.Uuid
-  userId               String         @map("user_id") @db.Uuid
-  examId               String         @map("exam_id") @db.Uuid
-  clientRequestId      String         @map("client_request_id") @db.Uuid
-  imageObjectKey       String         @unique @map("image_object_key") @db.VarChar(512)
-  imageMimeType        String         @map("image_mime_type") @db.VarChar(64)
-  imageSizeBytes       Int            @map("image_size_bytes")
-  imageWidth           Int            @map("image_width")
-  imageHeight          Int            @map("image_height")
-  source               String?        @db.VarChar(200)
-  note                 String?        @db.VarChar(200)
-  questionType         String?        @map("question_type") @db.VarChar(64)
-  questionText         String?        @map("question_text") @db.Text
-  optionsJson          Json?          @map("options_json")
-  userAnswer           String?        @map("user_answer") @db.VarChar(20)
-  correctAnswer        String?        @map("correct_answer") @db.VarChar(20)
-  status               QuestionStatus @default(DRAFT)
-  imageDeletionPending Boolean        @default(false) @map("image_deletion_pending")
-  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
-  deletedAt            DateTime?      @map("deleted_at") @db.Timestamptz(3)
-  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  exam                 Exam           @relation(fields: [examId], references: [id], onDelete: Restrict)
+  id                   String                   @id @default(uuid()) @db.Uuid
+  userId               String                   @map("user_id") @db.Uuid
+  examId               String                   @map("exam_id") @db.Uuid
+  clientRequestId      String                   @map("client_request_id") @db.Uuid
+  imageObjectKey       String                   @unique @map("image_object_key") @db.VarChar(512)
+  imageMimeType        String                   @map("image_mime_type") @db.VarChar(64)
+  imageSizeBytes       Int                      @map("image_size_bytes")
+  imageWidth           Int                      @map("image_width")
+  imageHeight          Int                      @map("image_height")
+  source               String?                  @db.VarChar(200)
+  note                 String?                  @db.VarChar(200)
+  questionType         String?                  @map("question_type") @db.VarChar(64)
+  questionText         String?                  @map("question_text") @db.Text
+  optionsJson          Json?                    @map("options_json")
+  userAnswer           String?                  @map("user_answer") @db.VarChar(20)
+  correctAnswer        String?                  @map("correct_answer") @db.VarChar(20)
+  contentRevision      Int                      @default(1) @map("content_revision")
+  status               QuestionStatus           @default(DRAFT)
+  imageDeletionPending Boolean                  @default(false) @map("image_deletion_pending")
+  createdAt            DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt            DateTime?                @map("deleted_at") @db.Timestamptz(3)
+  user                 User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam                 Exam                     @relation(fields: [examId], references: [id], onDelete: Restrict)
+  analysisJobs         AnalysisJob[]
+  analyses             Analysis[]
+  knowledgePoints      QuestionKnowledgePoint[]
 
   @@unique([userId, clientRequestId])
   @@index([userId, status, createdAt(sort: Desc)])
   @@index([examId, questionType])
   @@index([imageDeletionPending, deletedAt])
   @@map("questions")
+}
+
+model KnowledgePoint {
+  id        String                   @id @default(uuid()) @db.Uuid
+  examId    String                   @map("exam_id") @db.Uuid
+  parentId  String?                  @map("parent_id") @db.Uuid
+  code      String                   @db.VarChar(64)
+  name      String                   @db.VarChar(100)
+  level     Int
+  sortOrder Int                      @default(0) @map("sort_order")
+  status    KnowledgePointStatus     @default(ACTIVE)
+  createdAt DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  exam      Exam                     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  parent    KnowledgePoint?          @relation("KnowledgePointTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  KnowledgePoint[]         @relation("KnowledgePointTree")
+  questions QuestionKnowledgePoint[]
+
+  @@unique([examId, code])
+  @@index([examId, status, sortOrder])
+  @@index([parentId, sortOrder])
+  @@map("knowledge_points")
+}
+
+model AnalysisJob {
+  id                String            @id @default(uuid()) @db.Uuid
+  userId            String            @map("user_id") @db.Uuid
+  questionId        String            @map("question_id") @db.Uuid
+  questionRevision  Int               @map("question_revision")
+  workflowVersion   String            @map("workflow_version") @db.VarChar(64)
+  idempotencyKey    String            @unique @map("idempotency_key") @db.VarChar(64)
+  status            AnalysisJobStatus @default(PENDING)
+  retryCount        Int               @default(0) @map("retry_count")
+  errorCode         String?           @map("error_code") @db.VarChar(64)
+  errorMessageSafe  String?           @map("error_message_safe") @db.VarChar(500)
+  difyWorkflowRunId String?           @map("dify_workflow_run_id") @db.VarChar(128)
+  queuedAt          DateTime?         @map("queued_at") @db.Timestamptz(3)
+  startedAt         DateTime?         @map("started_at") @db.Timestamptz(3)
+  finishedAt        DateTime?         @map("finished_at") @db.Timestamptz(3)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question          Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  analysis          Analysis?
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, queuedAt])
+  @@index([questionId, status])
+  @@map("analysis_jobs")
+}
+
+model Analysis {
+  id                   String      @id @default(uuid()) @db.Uuid
+  jobId                String      @unique @map("job_id") @db.Uuid
+  questionId           String      @map("question_id") @db.Uuid
+  workflowVersion      String      @map("workflow_version") @db.VarChar(64)
+  promptVersion        String      @map("prompt_version") @db.VarChar(64)
+  modelName            String      @map("model_name") @db.VarChar(100)
+  schemaVersion        String      @map("schema_version") @db.VarChar(32)
+  knowledgeBaseVersion String?     @map("knowledge_base_version") @db.VarChar(64)
+  rawOutputJson        Json        @map("raw_output_json")
+  validatedOutputJson  Json        @map("validated_output_json")
+  errorType            String      @map("error_type") @db.VarChar(64)
+  errorReason          String      @map("error_reason") @db.Text
+  explanation          String      @db.Text
+  memoryTip            String?     @map("memory_tip") @db.Text
+  confidence           Decimal     @db.Decimal(5, 4)
+  answerConfidence     Decimal     @map("answer_confidence") @db.Decimal(5, 4)
+  needsManualReview    Boolean     @default(false) @map("needs_manual_review")
+  userCorrected        Boolean     @default(false) @map("user_corrected")
+  confirmedAt          DateTime?   @map("confirmed_at") @db.Timestamptz(3)
+  createdAt            DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  job                  AnalysisJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  question             Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId, createdAt(sort: Desc)])
+  @@map("analyses")
+}
+
+model QuestionKnowledgePoint {
+  questionId       String         @map("question_id") @db.Uuid
+  knowledgePointId String         @map("knowledge_point_id") @db.Uuid
+  confidence       Decimal        @db.Decimal(5, 4)
+  isUserConfirmed  Boolean        @default(false) @map("is_user_confirmed")
+  question         Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  knowledgePoint   KnowledgePoint @relation(fields: [knowledgePointId], references: [id], onDelete: Restrict)
+
+  @@id([questionId, knowledgePointId])
+  @@index([knowledgePointId])
+  @@map("question_knowledge_points")
 }
 
 model RefreshSession {

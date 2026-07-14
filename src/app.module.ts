@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { QuestionsModule } from './modules/questions/questions.module';
 import { UsersModule } from './modules/users/users.module';
+import { AnalysisModule } from './modules/analysis/analysis.module';
 
 @Module({
   imports: [
@@ -38,6 +39,9 @@ import { UsersModule } from './modules/users/users.module';
               'req.body.refreshToken',
               'config.WECHAT_APP_SECRET',
               'config.DATABASE_URL',
+              'config.REDIS_URL',
+              'config.DIFY_ANALYSIS_API_KEY',
+              'config.ANALYSIS_IDEMPOTENCY_SECRET',
             ],
             censor: '[REDACTED]',
           },
@@ -49,6 +53,7 @@ import { UsersModule } from './modules/users/users.module';
     AuthModule,
     UsersModule,
     QuestionsModule,
+    AnalysisModule,
   ],
 })
 export class AppModule {}

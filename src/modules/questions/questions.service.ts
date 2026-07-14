@@ -239,6 +239,8 @@ export class QuestionsService {
         HttpStatus.BAD_REQUEST,
       );
     }
+    data.contentRevision = { increment: 1 };
+    data.status = QuestionStatus.DRAFT;
 
     const updated = await this.prisma.question.updateMany({
       where: {
