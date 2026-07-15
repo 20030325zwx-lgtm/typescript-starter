@@ -46,6 +46,12 @@ export class ListQuestionsQueryDto {
   @MaxLength(64)
   questionType?: string;
 
+  @ApiPropertyOptional({ maxLength: 64 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  knowledgePointCode?: string;
+
   @ApiPropertyOptional({ enum: visibleStatuses })
   @IsOptional()
   @IsIn(visibleStatuses)

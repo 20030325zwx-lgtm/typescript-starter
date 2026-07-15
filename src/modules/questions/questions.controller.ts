@@ -36,6 +36,7 @@ import {
   QuestionResponseDto,
 } from './dto/question-response.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
+import { WrongbookListResponseDto } from './dto/wrongbook-response.dto';
 import { QuestionsService } from './questions.service';
 import { UploadedFileCleanupInterceptor } from './uploaded-file-cleanup.interceptor';
 
@@ -89,6 +90,16 @@ export class QuestionsController {
     @Query() query: ListQuestionsQueryDto,
   ): Promise<QuestionListResponseDto> {
     return this.questionsService.list(user.id, query);
+  }
+
+  @Get('wrongbook')
+  @ApiOperation({ summary: '查询当前用户已确认错题本聚合数据' })
+  @ApiOkResponse({ type: WrongbookListResponseDto })
+  listWrongbook(
+    @CurrentUser() user: RequestUser,
+    @Query() query: ListQuestionsQueryDto,
+  ): Promise<WrongbookListResponseDto> {
+    return this.questionsService.listWrongbook(user.id, query);
   }
 
   @Get(':id')

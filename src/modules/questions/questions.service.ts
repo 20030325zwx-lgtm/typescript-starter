@@ -22,6 +22,10 @@ import type {
   QuestionOptionDto,
   UpdateQuestionDto,
 } from './dto/update-question.dto';
+import type {
+  WrongbookListResponseDto,
+  WrongbookQuestionDto,
+} from './dto/wrongbook-response.dto';
 
 interface UploadedFile {
   path: string;
@@ -187,6 +191,186 @@ export class QuestionsService {
     };
   }
 
+  async listWrongbook(
+    userId: string,
+    query: ListQuestionsQueryDto,
+  ): Promise<WrongbookListResponseDto> {
+    const where: Prisma.QuestionWhereInput = {
+      userId,
+      status: QuestionStatus.CONFIRMED,
+      deletedAt: null,
+      ...(query.questionType ? { questionType: query.questionType } : {}),
+      ...(query.knowledgePointCode
+        ? {
+            knowledgePoints: {
+              some: {
+                knowledgePoint: {
+                  code:
+                    query.knowledgePointCode === 'logic'
+                      ? { startsWith: 'logic_' }
+                      : query.knowledgePointCode,
+                },
+              },
+            },
+          }
+        : {}),
+      ...(query.search
+        ? {
+            OR: [
+              {
+                questionText: {
+                  contains: query.search,
+                  mode: 'insensitive' as const,
+                },
+              },
+              {
+                source: {
+                  contains: query.search,
+                  mode: 'insensitive' as const,
+                },
+              },
+              {
+                note: {
+                  contains: query.search,
+                  mode: 'insensitive' as const,
+                },
+              },
+              {
+                analyses: {
+                  some: {
+                    errorType: {
+                      contains: query.search,
+                      mode: 'insensitive' as const,
+                    },
+                  },
+                },
+              },
+              {
+                knowledgePoints: {
+                  some: {
+                    knowledgePoint: {
+                      name: {
+                        contains: query.search,
+                        mode: 'insensitive' as const,
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+    const now = new Date();
+    const dayEnd = this.getEndOfShanghaiDay(now);
+    const weekStart = this.getStartOfShanghaiWeek(now);
+    const [items, total, dueToday, addedThisWeek, allMasteryQuestions] =
+      await this.prisma.$transaction([
+        this.prisma.question.findMany({
+          where,
+          include: {
+            analyses: { orderBy: { createdAt: 'desc' }, take: 1 },
+            knowledgePoints: {
+              include: {
+                knowledgePoint: {
+                  include: {
+                    masteryRecords: { where: { userId }, take: 1 },
+                  },
+                },
+              },
+              orderBy: { confidence: 'desc' },
+            },
+            reviewTasks: {
+              where: { status: ReviewTaskStatus.PENDING },
+              orderBy: { dueAt: 'asc' },
+              take: 1,
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          skip: (query.page - 1) * query.pageSize,
+          take: query.pageSize,
+        }),
+        this.prisma.question.count({ where }),
+        this.prisma.reviewTask.count({
+          where: {
+            userId,
+            status: ReviewTaskStatus.PENDING,
+            dueAt: { lte: dayEnd },
+            question: {
+              status: QuestionStatus.CONFIRMED,
+              deletedAt: null,
+            },
+          },
+        }),
+        this.prisma.question.count({
+          where: {
+            userId,
+            status: QuestionStatus.CONFIRMED,
+            deletedAt: null,
+            createdAt: { gte: weekStart },
+          },
+        }),
+        this.prisma.question.findMany({
+          where: {
+            userId,
+            status: QuestionStatus.CONFIRMED,
+            deletedAt: null,
+          },
+          select: {
+            knowledgePoints: {
+              select: {
+                knowledgePoint: {
+                  select: {
+                    masteryRecords: {
+                      where: { userId },
+                      select: { masteryScore: true },
+                      take: 1,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ]);
+
+    return {
+      summary: {
+        total,
+        dueToday,
+        mastered: allMasteryQuestions.filter(
+          (question) => this.calculateMastery(question.knowledgePoints) >= 80,
+        ).length,
+        addedThisWeek,
+      },
+      items: await Promise.all(
+        items.map(
+          async (item): Promise<WrongbookQuestionDto> => ({
+            id: item.id,
+            imageUrl: await this.objectStorage.createPresignedGetUrl(
+              item.imageObjectKey,
+            ),
+            questionType: item.questionType,
+            questionText: item.questionText,
+            userAnswer: item.userAnswer,
+            correctAnswer: item.correctAnswer,
+            errorType: item.analyses[0]?.errorType ?? null,
+            knowledgePoints: item.knowledgePoints.map(({ knowledgePoint }) => ({
+              code: knowledgePoint.code,
+              name: knowledgePoint.name,
+            })),
+            mastery: this.calculateMastery(item.knowledgePoints),
+            nextReviewAt: item.reviewTasks[0]?.dueAt ?? null,
+            createdAt: item.createdAt,
+          }),
+        ),
+      ),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+    };
+  }
+
   async getById(
     userId: string,
     questionId: string,
@@ -336,6 +520,36 @@ export class QuestionsService {
     const shanghaiTime = new Date(now.getTime() + shanghaiOffsetMs);
     shanghaiTime.setUTCHours(0, 0, 0, 0);
     return new Date(shanghaiTime.getTime() - shanghaiOffsetMs);
+  }
+
+  private getEndOfShanghaiDay(now = new Date()): Date {
+    return new Date(this.getStartOfShanghaiDay(now).getTime() + 86400000 - 1);
+  }
+
+  private getStartOfShanghaiWeek(now = new Date()): Date {
+    const start = this.getStartOfShanghaiDay(now);
+    const offset = 8 * 60 * 60 * 1000;
+    const local = new Date(start.getTime() + offset);
+    const day = local.getUTCDay() || 7;
+    return new Date(start.getTime() - (day - 1) * 86400000);
+  }
+
+  private calculateMastery(
+    knowledgePoints: Array<{
+      knowledgePoint: {
+        masteryRecords: Array<{ masteryScore: { toNumber(): number } }>;
+      };
+    }>,
+  ): number {
+    const scores = knowledgePoints.flatMap(({ knowledgePoint }) =>
+      knowledgePoint.masteryRecords.map(({ masteryScore }) =>
+        masteryScore.toNumber(),
+      ),
+    );
+    if (scores.length === 0) return 0;
+    return Math.round(
+      scores.reduce((sum, score) => sum + score, 0) / scores.length,
+    );
   }
 
   private findByClientRequestId(

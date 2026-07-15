@@ -97,6 +97,15 @@ export const environmentSchema = Joi.object({
     .valid('fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent')
     .default('info'),
   CORS_ORIGINS: Joi.string().allow('').default(''),
+  ADMIN_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  ADMIN_USERNAME: Joi.string().allow('').max(100).default(''),
+  ADMIN_PASSWORD: Joi.string().allow('').max(200).default(''),
+  ADMIN_JWT_SECRET: Joi.string().allow('').min(32).default(''),
+  ADMIN_JWT_TTL_SECONDS: Joi.number()
+    .integer()
+    .min(300)
+    .max(86400)
+    .default(28800),
 }).custom((value: Record<string, unknown>, helpers) => {
   const secrets = [
     value.JWT_ACCESS_SECRET,
@@ -121,6 +130,22 @@ export const environmentSchema = Joi.object({
   if (value.NODE_ENV === 'production' && value.DEV_AUTH_ENABLED) {
     return helpers.error('any.custom', {
       message: 'DEV_AUTH_ENABLED cannot be enabled in production',
+    });
+  }
+
+  if (
+    value.ADMIN_ENABLED &&
+    (!value.ADMIN_USERNAME || !value.ADMIN_PASSWORD || !value.ADMIN_JWT_SECRET)
+  ) {
+    return helpers.error('any.custom', {
+      message:
+        'ADMIN_USERNAME, ADMIN_PASSWORD and ADMIN_JWT_SECRET are required when ADMIN_ENABLED is true',
+    });
+  }
+
+  if (value.ADMIN_JWT_SECRET && secrets.includes(value.ADMIN_JWT_SECRET)) {
+    return helpers.error('any.custom', {
+      message: 'ADMIN_JWT_SECRET must differ from user JWT and hashing secrets',
     });
   }
 

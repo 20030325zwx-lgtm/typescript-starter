@@ -1,0 +1,17 @@
+[
+  {
+    "id": "synthetic-logic-001",
+    "expected": {
+      "questionType": "single_choice",
+      "correctAnswer": "B",
+      "knowledgePointCodes": ["logic_strengthen"]
+    },
+    "actual": {
+      "questionType": "single_choice",
+      "correctAnswer": "B",
+      "knowledgePointCodes": ["logic_strengthen"],
+      "durationMs": 18300,
+      "estimatedCost": 0.04
+    }
+  }
+]

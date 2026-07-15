@@ -55,11 +55,20 @@ enum ReviewSelfRating {
   EASY
 }
 
+enum FeedbackStatus {
+  PENDING
+  RESOLVED
+}
+
 model User {
   id               String           @id @default(uuid()) @db.Uuid
   wechatOpenidHash String           @unique @map("wechat_openid_hash") @db.VarChar(64)
   nickname         String?          @db.VarChar(100)
   avatarUrl        String?          @map("avatar_url") @db.VarChar(2048)
+  examTargetName   String?          @map("exam_target_name") @db.VarChar(100)
+  examDate         DateTime?        @map("exam_date") @db.Timestamptz(3)
+  reminderEnabled  Boolean          @default(false) @map("reminder_enabled")
+  reminderTime     String?          @map("reminder_time") @db.VarChar(5)
   status           UserStatus       @default(ACTIVE)
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -69,8 +78,25 @@ model User {
   analysisJobs     AnalysisJob[]
   reviewTasks      ReviewTask[]
   masteryRecords   UserMastery[]
+  feedback         Feedback[]
 
   @@map("users")
+}
+
+model Feedback {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  category  String         @db.VarChar(32)
+  content   String         @db.Text
+  contact   String?        @db.VarChar(100)
+  status    FeedbackStatus @default(PENDING)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("feedback")
 }
 
 model Exam {

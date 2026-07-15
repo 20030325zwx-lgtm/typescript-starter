@@ -398,3 +398,6 @@ Temporary Items
 dist
 .webpack
 .serverless/**/*.zip
+
+# Local evaluation datasets may contain licensed questions or user data
+eval/*.local.json

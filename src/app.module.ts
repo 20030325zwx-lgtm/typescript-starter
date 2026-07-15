@@ -10,6 +10,8 @@ import { QuestionsModule } from './modules/questions/questions.module';
 import { UsersModule } from './modules/users/users.module';
 import { AnalysisModule } from './modules/analysis/analysis.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
+import { AdminModule } from './modules/admin/admin.module';
+import { StatisticsModule } from './modules/statistics/statistics.module';
 
 @Module({
   imports: [
@@ -43,6 +45,8 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
               'config.REDIS_URL',
               'config.DIFY_ANALYSIS_API_KEY',
               'config.ANALYSIS_IDEMPOTENCY_SECRET',
+              'config.ADMIN_PASSWORD',
+              'config.ADMIN_JWT_SECRET',
             ],
             censor: '[REDACTED]',
           },
@@ -56,6 +60,8 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
     QuestionsModule,
     AnalysisModule,
     ReviewsModule,
+    AdminModule,
+    StatisticsModule,
   ],
 })
 export class AppModule {}
