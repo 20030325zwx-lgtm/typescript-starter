@@ -9,7 +9,11 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
-import { ANALYSIS_ERROR_TYPES } from '../analysis-output.types';
+import {
+  ANALYSIS_ERROR_TYPES,
+  ANALYSIS_QUESTION_TYPES,
+  type AnalysisQuestionType,
+} from '../analysis-output.types';
 
 export class ConfirmedQuestionOptionDto {
   @ApiPropertyOptional({ maxLength: 20 })
@@ -40,9 +44,10 @@ export class ConfirmAnalysisDto {
 
   @ApiPropertyOptional({ maxLength: 64 })
   @IsOptional()
+  @IsIn(ANALYSIS_QUESTION_TYPES)
   @IsString()
   @MaxLength(64)
-  questionType?: string;
+  questionType?: AnalysisQuestionType;
 
   @ApiPropertyOptional({ maxLength: 20 })
   @IsOptional()

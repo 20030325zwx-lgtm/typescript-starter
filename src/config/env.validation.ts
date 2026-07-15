@@ -31,6 +31,8 @@ export const environmentSchema = Joi.object({
     .min(1000)
     .max(30000)
     .default(5000),
+  DEV_AUTH_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  DEV_AUTH_USER_KEY: Joi.string().min(8).max(128).default('learn-app-h5-dev'),
   S3_ENDPOINT: Joi.string().uri().required(),
   S3_REGION: Joi.string().min(1).default('us-east-1'),
   S3_ACCESS_KEY: Joi.string().min(1).required(),
@@ -113,6 +115,12 @@ export const environmentSchema = Joi.object({
   if (value.ANALYSIS_WORKER_ENABLED && !value.DIFY_ANALYSIS_API_KEY) {
     return helpers.error('any.custom', {
       message: 'DIFY_ANALYSIS_API_KEY is required when the worker is enabled',
+    });
+  }
+
+  if (value.NODE_ENV === 'production' && value.DEV_AUTH_ENABLED) {
+    return helpers.error('any.custom', {
+      message: 'DEV_AUTH_ENABLED cannot be enabled in production',
     });
   }
 

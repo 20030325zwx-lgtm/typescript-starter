@@ -4,6 +4,7 @@ import Ajv, { type ValidateFunction } from 'ajv';
 import { AnalysisExecutionError } from './analysis-execution.error';
 import {
   ANALYSIS_ERROR_TYPES,
+  ANALYSIS_QUESTION_TYPES,
   type AnalysisOutput,
 } from './analysis-output.types';
 
@@ -42,7 +43,7 @@ const schema: object = {
         'correct_answer',
       ],
       properties: {
-        type_code: { type: 'string', minLength: 1, maxLength: 64 },
+        type_code: { type: 'string', enum: [...ANALYSIS_QUESTION_TYPES] },
         text: { type: 'string', minLength: 1, maxLength: 20000 },
         options: {
           type: 'array',
@@ -59,12 +60,13 @@ const schema: object = {
           },
         },
         user_answer: { type: 'string', maxLength: 20 },
+        user_answer_evidence: { type: 'string', maxLength: 500 },
         correct_answer: { type: 'string', maxLength: 20 },
       },
     },
     knowledge_points: {
       type: 'array',
-      minItems: 1,
+      minItems: 0,
       maxItems: 10,
       items: {
         type: 'object',
@@ -72,6 +74,7 @@ const schema: object = {
         required: ['code', 'confidence'],
         properties: {
           code: { type: 'string', minLength: 1, maxLength: 64 },
+          name: { type: 'string', maxLength: 100 },
           confidence: { type: 'number', minimum: 0, maximum: 1 },
         },
       },
@@ -156,6 +159,7 @@ export class AnalysisResultValidatorService {
       candidateCodes: Set<string>;
     },
   ): AnalysisOutput {
+    this.normalizeQuestionType(value);
     if (!this.validateSchema(value)) {
       throw this.invalid();
     }
@@ -168,6 +172,28 @@ export class AnalysisResultValidatorService {
     ) {
       throw this.invalid();
     }
+    if (!context.userAnswer) {
+      value.question.user_answer = '';
+      value.question.user_answer_evidence = '';
+      value.diagnosis.error_type = 'OTHER';
+      value.diagnosis.reason =
+        '未提供可验证的用户作答，请确认答案后再进行错因诊断。';
+      value.diagnosis.requires_user_confirmation = true;
+    }
+    if (value.quality.needs_reupload || !value.quality.is_complete) {
+      throw new AnalysisExecutionError(
+        'IMAGE_REUPLOAD_REQUIRED',
+        value.quality.message || '未识别到完整有效的题目，请重新上传',
+        false,
+      );
+    }
+    if (value.knowledge_points.length === 0) {
+      throw new AnalysisExecutionError(
+        'DIFY_KNOWLEDGE_POINT_INVALID',
+        '未能识别题目对应的知识点，请重新分析',
+        false,
+      );
+    }
     if (
       value.knowledge_points.some(
         ({ code }) => !context.candidateCodes.has(code),
@@ -176,13 +202,6 @@ export class AnalysisResultValidatorService {
       throw new AnalysisExecutionError(
         'DIFY_KNOWLEDGE_POINT_INVALID',
         'AI 返回了未知知识点，请重新分析',
-        false,
-      );
-    }
-    if (value.quality.needs_reupload || !value.quality.is_complete) {
-      throw new AnalysisExecutionError(
-        'IMAGE_REUPLOAD_REQUIRED',
-        '图片内容不完整或不清晰，请重新上传',
         false,
       );
     }
@@ -200,5 +219,25 @@ export class AnalysisResultValidatorService {
       'AI 返回结果格式异常，请重新分析',
       false,
     );
+  }
+
+  private normalizeQuestionType(value: unknown): void {
+    if (!this.isRecord(value) || !this.isRecord(value.question)) return;
+    const question = value.question;
+    if (
+      typeof question.type_code === 'string' &&
+      !ANALYSIS_QUESTION_TYPES.includes(
+        question.type_code as (typeof ANALYSIS_QUESTION_TYPES)[number],
+      )
+    ) {
+      question.type_code =
+        Array.isArray(question.options) && question.options.length > 0
+          ? 'single_choice'
+          : 'other';
+    }
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 }

@@ -1,11 +1,13 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   HttpCode,
   HttpStatus,
   Post,
   Req,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ApiNoContentResponse,
   ApiOkResponse,
@@ -21,7 +23,10 @@ import { WechatLoginDto } from './dto/wechat-login.dto';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly config: ConfigService,
+  ) {}
 
   @Post('wechat-login')
   @HttpCode(HttpStatus.OK)
@@ -35,6 +40,20 @@ export class AuthController {
       body.code,
       this.getMetadata(request),
     );
+  }
+
+  @Post('dev-login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '仅本地 H5 联调使用的开发登录' })
+  @ApiOkResponse({ type: AuthResponseDto })
+  devLogin(@Req() request: Request): Promise<AuthResponseDto> {
+    if (
+      this.config.get<string>('NODE_ENV') === 'production' ||
+      !this.config.get<boolean>('DEV_AUTH_ENABLED', false)
+    ) {
+      throw new ForbiddenException('开发登录未启用');
+    }
+    return this.authService.loginForDevelopment(this.getMetadata(request));
   }
 
   @Post('refresh')

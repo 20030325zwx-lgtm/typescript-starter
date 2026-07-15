@@ -12,15 +12,23 @@ interface DifyResponse {
   data?: { status?: unknown; outputs?: unknown; error?: unknown };
 }
 
+interface DifyUploadResponse {
+  id?: unknown;
+}
+
 @Injectable()
 export class HttpDifyAnalysisClient implements DifyAnalysisClient {
+  private readonly baseUrl: string;
   private readonly endpoint: string;
   private readonly apiKey: string;
   private readonly timeoutMs: number;
   private readonly outputKey: string;
 
   constructor(config: ConfigService) {
-    this.endpoint = `${config.getOrThrow<string>('DIFY_BASE_URL').replace(/\/$/, '')}/v1/workflows/run`;
+    this.baseUrl = config
+      .getOrThrow<string>('DIFY_BASE_URL')
+      .replace(/\/$/, '');
+    this.endpoint = `${this.baseUrl}/v1/workflows/run`;
     this.apiKey = config.get<string>('DIFY_ANALYSIS_API_KEY', '');
     this.timeoutMs = config.get<number>('DIFY_ANALYSIS_TIMEOUT_MS', 90000);
     this.outputKey = config.get<string>(
@@ -34,6 +42,59 @@ export class HttpDifyAnalysisClient implements DifyAnalysisClient {
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     let response: Response;
     try {
+      const imageResponse = await fetch(input.imageUrl, {
+        signal: controller.signal,
+      });
+      if (!imageResponse.ok) {
+        throw new AnalysisExecutionError(
+          'STORAGE_URL_UNAVAILABLE',
+          '题目图片暂时无法读取',
+          true,
+        );
+      }
+      const contentType = imageResponse.headers.get('content-type');
+      if (!contentType?.startsWith('image/')) {
+        throw new AnalysisExecutionError(
+          'STORAGE_FILE_INVALID',
+          '题目图片格式无效',
+          false,
+        );
+      }
+      const imageBytes = await imageResponse.arrayBuffer();
+      const uploadForm = new FormData();
+      uploadForm.append(
+        'file',
+        new Blob([imageBytes], { type: contentType }),
+        this.fileNameFor(contentType),
+      );
+      uploadForm.append('user', `learn-app:${input.userId}`);
+      const uploadResponse = await fetch(`${this.baseUrl}/v1/files/upload`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${this.apiKey}` },
+        body: uploadForm,
+        signal: controller.signal,
+      });
+      if (uploadResponse.status === 429) {
+        throw new AnalysisExecutionError(
+          'DIFY_RATE_LIMITED',
+          'AI 分析请求较多，请稍后重试',
+          true,
+        );
+      }
+      if (!uploadResponse.ok) {
+        throw new AnalysisExecutionError(
+          uploadResponse.status >= 500
+            ? 'DIFY_UNAVAILABLE'
+            : 'DIFY_FILE_UPLOAD_REJECTED',
+          'AI 暂时无法接收题目图片',
+          uploadResponse.status >= 500,
+        );
+      }
+      const uploaded = (await uploadResponse.json()) as DifyUploadResponse;
+      if (typeof uploaded.id !== 'string' || !uploaded.id) {
+        throw this.invalidOutput();
+      }
+
       response = await fetch(this.endpoint, {
         method: 'POST',
         headers: {
@@ -45,8 +106,8 @@ export class HttpDifyAnalysisClient implements DifyAnalysisClient {
             image: [
               {
                 type: 'image',
-                transfer_method: 'remote_url',
-                url: input.imageUrl,
+                transfer_method: 'local_file',
+                upload_file_id: uploaded.id,
               },
             ],
             user_answer: input.userAnswer ?? '',
@@ -65,6 +126,7 @@ export class HttpDifyAnalysisClient implements DifyAnalysisClient {
         signal: controller.signal,
       });
     } catch (error: unknown) {
+      if (error instanceof AnalysisExecutionError) throw error;
       const timedOut = error instanceof Error && error.name === 'AbortError';
       throw new AnalysisExecutionError(
         timedOut ? 'DIFY_TIMEOUT' : 'DIFY_UNAVAILABLE',
@@ -119,15 +181,25 @@ export class HttpDifyAnalysisClient implements DifyAnalysisClient {
     };
   }
 
+  private fileNameFor(contentType: string): string {
+    if (contentType.includes('png')) return 'question.png';
+    if (contentType.includes('webp')) return 'question.webp';
+    return 'question.jpg';
+  }
+
   private parseOutput(value: unknown): unknown {
     if (this.isRecord(value)) {
       return value;
     }
-    if (typeof value !== 'string' || value.includes('```')) {
+    if (typeof value !== 'string') {
       throw this.invalidOutput();
     }
     try {
-      const parsed: unknown = JSON.parse(value);
+      const normalized = value
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/, '');
+      const parsed: unknown = JSON.parse(normalized);
       if (!this.isRecord(parsed)) {
         throw this.invalidOutput();
       }
@@ -147,7 +219,7 @@ export class HttpDifyAnalysisClient implements DifyAnalysisClient {
   private invalidOutput(cause?: unknown): AnalysisExecutionError {
     return new AnalysisExecutionError(
       'DIFY_OUTPUT_INVALID',
-      'AI 返回结果格式异常，请重新分析',
+      '未识别到完整有效的题目，请更换清晰题图后重试',
       false,
       { cause },
     );

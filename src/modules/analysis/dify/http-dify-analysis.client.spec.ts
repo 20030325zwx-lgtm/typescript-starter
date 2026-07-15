@@ -22,19 +22,38 @@ describe('HttpDifyAnalysisClient', () => {
 
   afterEach(() => fetchSpy.mockRestore());
 
-  it('sends the Dify file input as a remote-url image array', async () => {
-    fetchSpy.mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          workflow_run_id: 'run-1',
-          data: {
-            status: 'succeeded',
-            outputs: { analysis_result: JSON.stringify({ ok: true }) },
-          },
+  function mockSuccessfulFileUploadAndWorkflow(
+    output = JSON.stringify({ ok: true }),
+  ) {
+    fetchSpy
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
         }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
-    );
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 'file-1' }), {
+          status: 201,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            workflow_run_id: 'run-1',
+            data: {
+              status: 'succeeded',
+              outputs: { analysis_result: output },
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+  }
+
+  it('uploads the private image to Dify before running the workflow', async () => {
+    mockSuccessfulFileUploadAndWorkflow();
 
     const result = await client.run({
       userId: 'user-1',
@@ -46,7 +65,11 @@ describe('HttpDifyAnalysisClient', () => {
       knowledgePointCandidates: [],
       schemaVersion: '1.0',
     });
-    const init = fetchSpy.mock.calls[0][1];
+    expect(fetchSpy.mock.calls[0][0]).toBe('https://storage.example/signed');
+    expect(fetchSpy.mock.calls[1][0]).toBe(
+      'https://dify.example/v1/files/upload',
+    );
+    const init = fetchSpy.mock.calls[2][1];
     const body = JSON.parse(init.body as string) as {
       inputs: { image: unknown[] };
     };
@@ -54,25 +77,15 @@ describe('HttpDifyAnalysisClient', () => {
     expect(body.inputs.image).toEqual([
       {
         type: 'image',
-        transfer_method: 'remote_url',
-        url: 'https://storage.example/signed',
+        transfer_method: 'local_file',
+        upload_file_id: 'file-1',
       },
     ]);
     expect(result).toMatchObject({ runId: 'run-1', output: { ok: true } });
   });
 
-  it('rejects markdown-wrapped model JSON', async () => {
-    fetchSpy.mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: {
-            status: 'succeeded',
-            outputs: { analysis_result: '```json\n{}\n```' },
-          },
-        }),
-        { status: 200 },
-      ),
-    );
+  it('accepts a single markdown-wrapped JSON object from the model', async () => {
+    mockSuccessfulFileUploadAndWorkflow('```json\n{}\n```');
 
     await expect(
       client.run({
@@ -85,11 +98,18 @@ describe('HttpDifyAnalysisClient', () => {
         knowledgePointCandidates: [],
         schemaVersion: '1.0',
       }),
-    ).rejects.toMatchObject({ code: 'DIFY_OUTPUT_INVALID' });
+    ).resolves.toMatchObject({ output: {} });
   });
 
   it('classifies rate limiting as retryable', async () => {
-    fetchSpy.mockResolvedValue(new Response('', { status: 429 }));
+    fetchSpy
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1]), {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg' },
+        }),
+      )
+      .mockResolvedValueOnce(new Response('', { status: 429 }));
 
     await expect(
       client.run({

@@ -1,0 +1,273 @@
+app:
+  description: 公务员行测错题图片识别、答案推理、错误诊断与结构化解析
+  icon: 🧠
+  icon_background: '#E8F5F2'
+  mode: workflow
+  name: 行测错题图片分析
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+version: 0.3.1
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+      - data:
+          isInIteration: false
+          isInLoop: false
+          sourceType: start
+          targetType: llm
+        id: start-to-vision-analysis
+        source: start
+        sourceHandle: source
+        target: vision_analysis
+        targetHandle: target
+        type: custom
+        zIndex: 0
+      - data:
+          isInIteration: false
+          isInLoop: false
+          sourceType: llm
+          targetType: end
+        id: vision-analysis-to-end
+        source: vision_analysis
+        sourceHandle: source
+        target: end
+        targetHandle: target
+        type: custom
+        zIndex: 0
+    nodes:
+      - data:
+          desc: 接收后端提供的图片、作答上下文和知识点候选
+          selected: false
+          title: 开始
+          type: start
+          variables:
+            - allowed_file_extensions: []
+              allowed_file_types:
+                - image
+              allowed_file_upload_methods:
+                - local_file
+                - remote_url
+              label: 题目图片
+              max_length: null
+              options: []
+              required: true
+              type: file-list
+              variable: image
+            - label: 用户答案
+              max_length: 20
+              options: []
+              required: false
+              type: text-input
+              variable: user_answer
+            - label: 参考答案
+              max_length: 20
+              options: []
+              required: false
+              type: text-input
+              variable: provided_correct_answer
+            - label: 题目来源
+              max_length: 200
+              options: []
+              required: false
+              type: text-input
+              variable: question_source
+            - label: 用户备注
+              max_length: 200
+              options: []
+              required: false
+              type: paragraph
+              variable: user_note
+            - label: 知识点候选 JSON
+              max_length: 20000
+              options: []
+              required: true
+              type: paragraph
+              variable: knowledge_point_candidates
+            - label: Schema 版本
+              max_length: 20
+              options: []
+              required: true
+              type: text-input
+              variable: schema_version
+            - label: 输出语言
+              max_length: 20
+              options: []
+              required: true
+              type: text-input
+              variable: locale
+        height: 360
+        id: start
+        position:
+          x: 40
+          y: 180
+        positionAbsolute:
+          x: 40
+          y: 180
+        selected: false
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 260
+      - data:
+          context:
+            enabled: false
+            variable_selector: []
+          desc: 识别题目、推理答案、诊断错误并生成 schema_version=1.0 JSON
+          memory:
+            enabled: false
+            window:
+              enabled: false
+              size: 10
+          model:
+            completion_params:
+              max_tokens: 4096
+              temperature: 0.1
+            mode: chat
+            name: ''
+            provider: ''
+          prompt_template:
+            - role: system
+              text: |-
+                你是公务员考试错题分析器。必须基于图片和输入上下文完成识别与推理，不得把所有题目强行归类为选择题或判断推理题。
+
+                安全与一致性规则：
+                1. 只输出一个合法 JSON 对象，不要输出 Markdown 代码围栏、前后说明或注释。
+                2. schema_version 必须与输入一致，当前只支持 1.0。
+                3. 如果输入 user_answer 非空，输出 question.user_answer 必须与输入完全一致；如果输入为空，只能在图片存在清晰的手写、涂色、打勾、划线或圈选痕迹时识别。印刷的选项文字、题目自带括号、空白括号都不是作答痕迹。没有明确人工痕迹时必须返回空字符串，严禁根据正确答案猜测用户答案。
+                4. knowledge_points.code 只能从 knowledge_point_candidates 中选择，不得创造新 code。
+                5. 图片不包含题目、图片不清晰、被遮挡或题目不完整时，quality.is_complete=false、quality.needs_reupload=true，并说明原因；此时 knowledge_points 可以为空数组。
+                6. 无法可靠判断正确答案时，降低 safety.answer_confidence，并设置 safety.needs_manual_review=true。
+                7. diagnosis.error_type 只能是 MISREAD_CONDITION、KNOWLEDGE_GAP、REASONING_ERROR、CARELESSNESS、OTHER 之一。
+                8. confidence 和 answer_confidence 必须是 0 到 1 之间的数字。
+                9. 不得假设所有题目都是四选一。选择题返回真实选项；判断题、填空题、简答题或无选项题返回 options=[]。correct_answer 可以是选项标签、判断结论、数值或简短文本。
+                10. provided_correct_answer 为空时，不得声称用户提供了参考答案。question.user_answer 为空时，不得诊断用户选错；diagnosis.error_type 使用 OTHER，reason 说明未识别到用户作答，等待用户确认。
+                11. question.type_code 只允许 single_choice、multiple_choice、true_false、fill_blank、short_answer、material_analysis、other，不得填知识点 code。
+                12. question.user_answer_evidence 用一句话描述图片中的具体人工作答痕迹；没有明确痕迹时必须为空字符串。
+
+                输出 JSON 必须严格使用以下结构：
+                {
+                  "schema_version": "1.0",
+                  "quality": {
+                    "is_complete": true,
+                    "needs_reupload": false,
+                    "message": ""
+                  },
+                  "question": {
+                    "type_code": "single_choice",
+                    "text": "完整题干",
+                    "options": [{"label": "A", "text": "选项内容"}],
+                    "user_answer": "",
+                    "user_answer_evidence": "",
+                    "correct_answer": ""
+                  },
+                  "knowledge_points": [
+                    {"code": "logic_strengthen", "confidence": 0.9}
+                  ],
+                  "diagnosis": {
+                    "error_type": "REASONING_ERROR",
+                    "reason": "错误原因",
+                    "confidence": 0.8,
+                    "requires_user_confirmation": false
+                  },
+                  "solution": {
+                    "summary": "核心解析",
+                    "steps": ["步骤一", "步骤二"],
+                    "option_analysis": [
+                      {"label": "A", "analysis": "该选项为什么正确或错误"}
+                    ],
+                    "memory_tip": "记忆提示"
+                  },
+                  "safety": {
+                    "answer_confidence": 0.9,
+                    "needs_manual_review": false
+                  }
+                }
+            - role: user
+              text: |-
+                用户答案：{{#start.user_answer#}}
+                用户提供的参考答案：{{#start.provided_correct_answer#}}
+                题目来源：{{#start.question_source#}}
+                用户备注：{{#start.user_note#}}
+                可选知识点：{{#start.knowledge_point_candidates#}}
+                Schema 版本：{{#start.schema_version#}}
+                输出语言：{{#start.locale#}}
+
+                请结合已提供的题目图片完成分析，并严格输出 JSON。
+          retry_config:
+            enabled: true
+            exponential_backoff:
+              enabled: true
+              max_interval: 10000
+              multiplier: 2
+            max_retries: 1
+            retry_interval: 1000
+          selected: false
+          structured_output_enabled: false
+          title: 视觉识别与错因分析
+          type: llm
+          vision:
+            configs:
+              detail: high
+              variable_selector:
+                - start
+                - image
+            enabled: true
+        height: 220
+        id: vision_analysis
+        position:
+          x: 380
+          y: 230
+        positionAbsolute:
+          x: 380
+          y: 230
+        selected: false
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 280
+      - data:
+          desc: 返回后端约定的 analysis_result
+          outputs:
+            - value_selector:
+                - vision_analysis
+                - text
+              value_type: string
+              variable: analysis_result
+          selected: false
+          title: 结束
+          type: end
+        height: 120
+        id: end
+        position:
+          x: 740
+          y: 280
+        positionAbsolute:
+          x: 740
+          y: 280
+        selected: false
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 250
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.8

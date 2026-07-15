@@ -54,6 +54,28 @@ export class AuthService {
     return this.createSession(this.toAuthUser(user), metadata);
   }
 
+  async loginForDevelopment(
+    metadata: SessionMetadata,
+  ): Promise<AuthResponseDto> {
+    const developmentUserKey =
+      this.config.getOrThrow<string>('DEV_AUTH_USER_KEY');
+    const wechatOpenidHash = createHmacHex(
+      `development:${developmentUserKey}`,
+      this.openidHashSecret,
+    );
+    const user = await this.prisma.user.upsert({
+      where: { wechatOpenidHash },
+      update: {},
+      create: {
+        wechatOpenidHash,
+        nickname: 'H5 联调用户',
+      },
+    });
+
+    this.ensureUserActive(user.status);
+    return this.createSession(this.toAuthUser(user), metadata);
+  }
+
   async refresh(
     refreshToken: string,
     metadata: SessionMetadata,
