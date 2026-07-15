@@ -41,6 +41,20 @@ enum AnalysisJobStatus {
   CANCELLED
 }
 
+enum ReviewTaskStatus {
+  PENDING
+  COMPLETED
+  SKIPPED
+  CANCELLED
+}
+
+enum ReviewSelfRating {
+  AGAIN
+  HARD
+  GOOD
+  EASY
+}
+
 model User {
   id               String           @id @default(uuid()) @db.Uuid
   wechatOpenidHash String           @unique @map("wechat_openid_hash") @db.VarChar(64)
@@ -53,6 +67,8 @@ model User {
   refreshSessions  RefreshSession[]
   questions        Question[]
   analysisJobs     AnalysisJob[]
+  reviewTasks      ReviewTask[]
+  masteryRecords   UserMastery[]
 
   @@map("users")
 }
@@ -98,6 +114,7 @@ model Question {
   analysisJobs         AnalysisJob[]
   analyses             Analysis[]
   knowledgePoints      QuestionKnowledgePoint[]
+  reviewTasks          ReviewTask[]
 
   @@unique([userId, clientRequestId])
   @@index([userId, status, createdAt(sort: Desc)])
@@ -107,20 +124,21 @@ model Question {
 }
 
 model KnowledgePoint {
-  id        String                   @id @default(uuid()) @db.Uuid
-  examId    String                   @map("exam_id") @db.Uuid
-  parentId  String?                  @map("parent_id") @db.Uuid
-  code      String                   @db.VarChar(64)
-  name      String                   @db.VarChar(100)
-  level     Int
-  sortOrder Int                      @default(0) @map("sort_order")
-  status    KnowledgePointStatus     @default(ACTIVE)
-  createdAt DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
-  exam      Exam                     @relation(fields: [examId], references: [id], onDelete: Cascade)
-  parent    KnowledgePoint?          @relation("KnowledgePointTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children  KnowledgePoint[]         @relation("KnowledgePointTree")
-  questions QuestionKnowledgePoint[]
+  id             String                   @id @default(uuid()) @db.Uuid
+  examId         String                   @map("exam_id") @db.Uuid
+  parentId       String?                  @map("parent_id") @db.Uuid
+  code           String                   @db.VarChar(64)
+  name           String                   @db.VarChar(100)
+  level          Int
+  sortOrder      Int                      @default(0) @map("sort_order")
+  status         KnowledgePointStatus     @default(ACTIVE)
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  exam           Exam                     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  parent         KnowledgePoint?          @relation("KnowledgePointTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children       KnowledgePoint[]         @relation("KnowledgePointTree")
+  questions      QuestionKnowledgePoint[]
+  masteryRecords UserMastery[]
 
   @@unique([examId, code])
   @@index([examId, status, sortOrder])
@@ -212,4 +230,58 @@ model RefreshSession {
   @@index([userId, revokedAt])
   @@index([expiresAt])
   @@map("refresh_sessions")
+}
+
+model ReviewTask {
+  id           String           @id @default(uuid()) @db.Uuid
+  userId       String           @map("user_id") @db.Uuid
+  questionId   String           @map("question_id") @db.Uuid
+  cycle        Int
+  dueAt        DateTime         @map("due_at") @db.Timestamptz(3)
+  status       ReviewTaskStatus @default(PENDING)
+  intervalDays Int              @default(1) @map("interval_days")
+  completedAt  DateTime?        @map("completed_at") @db.Timestamptz(3)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question     Question         @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  attempt      ReviewAttempt?
+
+  @@unique([questionId, cycle])
+  @@index([userId, status, dueAt])
+  @@index([questionId, status])
+  @@map("review_tasks")
+}
+
+model ReviewAttempt {
+  id              String           @id @default(uuid()) @db.Uuid
+  reviewTaskId    String           @unique @map("review_task_id") @db.Uuid
+  userAnswer      String?          @map("user_answer") @db.VarChar(200)
+  isCorrect       Boolean?         @map("is_correct")
+  selfRating      ReviewSelfRating @map("self_rating")
+  durationSeconds Int?             @map("duration_seconds")
+  nextReviewAt    DateTime         @map("next_review_at") @db.Timestamptz(3)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  reviewTask      ReviewTask       @relation(fields: [reviewTaskId], references: [id], onDelete: Cascade)
+
+  @@map("review_attempts")
+}
+
+model UserMastery {
+  id                   String         @id @default(uuid()) @db.Uuid
+  userId               String         @map("user_id") @db.Uuid
+  knowledgePointId     String         @map("knowledge_point_id") @db.Uuid
+  masteryScore         Decimal        @default(0) @map("mastery_score") @db.Decimal(5, 2)
+  reviewCount          Int            @default(0) @map("review_count")
+  correctReviewCount   Int            @default(0) @map("correct_review_count")
+  incorrectReviewCount Int            @default(0) @map("incorrect_review_count")
+  lastReviewedAt       DateTime?      @map("last_reviewed_at") @db.Timestamptz(3)
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledgePoint       KnowledgePoint @relation(fields: [knowledgePointId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, knowledgePointId])
+  @@index([knowledgePointId, masteryScore])
+  @@map("user_mastery")
 }

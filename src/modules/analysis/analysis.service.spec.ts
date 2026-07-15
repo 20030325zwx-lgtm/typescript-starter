@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { AnalysisJobStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { KnowledgePointsService } from '../knowledge-points/knowledge-points.service';
+import { ReviewsService } from '../reviews/reviews.service';
 import { AnalysisService } from './analysis.service';
 import type { AnalysisQueue } from './queue/analysis-queue.interface';
 
@@ -45,11 +46,18 @@ describe('AnalysisService', () => {
   const knowledgePoints = {} as KnowledgePointsService;
   const enqueue = jest.fn();
   const queue = { enqueue } as AnalysisQueue;
+  const reviews = {} as ReviewsService;
   let service: AnalysisService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new AnalysisService(prisma, config, knowledgePoints, queue);
+    service = new AnalysisService(
+      prisma,
+      config,
+      knowledgePoints,
+      queue,
+      reviews,
+    );
     question.findFirst.mockResolvedValue({
       id: sampleJob.questionId,
       contentRevision: 1,

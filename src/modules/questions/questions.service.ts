@@ -1,6 +1,6 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, QuestionStatus } from '@prisma/client';
+import { Prisma, QuestionStatus, ReviewTaskStatus } from '@prisma/client';
 import { createReadStream } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -288,6 +288,17 @@ export class QuestionsService {
     if (deleted.count !== 1) {
       return;
     }
+    await this.prisma.reviewTask.updateMany({
+      where: {
+        questionId,
+        userId,
+        status: ReviewTaskStatus.PENDING,
+      },
+      data: {
+        status: ReviewTaskStatus.CANCELLED,
+        completedAt: now,
+      },
+    });
 
     try {
       await this.objectStorage.deleteObject(question.imageObjectKey);

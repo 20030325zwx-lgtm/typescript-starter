@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { KnowledgePointsModule } from '../knowledge-points/knowledge-points.module';
 import { StorageModule } from '../storage/storage.module';
+import { ReviewsModule } from '../reviews/reviews.module';
 import { AnalysisController } from './analysis.controller';
 import { AnalysisJobRunnerService } from './analysis-job-runner.service';
 import { AnalysisResultValidatorService } from './analysis-result-validator.service';
@@ -14,7 +15,7 @@ import { AnalysisWorker } from './queue/analysis.worker';
 import { BullmqAnalysisQueueService } from './queue/bullmq-analysis-queue.service';
 
 @Module({
-  imports: [AuthModule, StorageModule, KnowledgePointsModule],
+  imports: [AuthModule, StorageModule, KnowledgePointsModule, ReviewsModule],
   controllers: [AnalysisController],
   providers: [
     AnalysisService,

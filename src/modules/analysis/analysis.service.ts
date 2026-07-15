@@ -5,6 +5,7 @@ import { createHmac } from 'node:crypto';
 import { ApiException } from '../../common/exceptions/api.exception';
 import { PrismaService } from '../../database/prisma.service';
 import { KnowledgePointsService } from '../knowledge-points/knowledge-points.service';
+import { ReviewsService } from '../reviews/reviews.service';
 import type { AnalysisOutput } from './analysis-output.types';
 import type { ConfirmAnalysisDto } from './dto/confirm-analysis.dto';
 import type {
@@ -27,6 +28,7 @@ export class AnalysisService {
     private readonly config: ConfigService,
     private readonly knowledgePoints: KnowledgePointsService,
     @Inject(ANALYSIS_QUEUE) private readonly queue: AnalysisQueue,
+    private readonly reviews: ReviewsService,
   ) {
     this.workflowVersion = config.getOrThrow<string>(
       'DIFY_ANALYSIS_WORKFLOW_VERSION',
@@ -338,6 +340,7 @@ export class AnalysisService {
           data: { isUserConfirmed: true },
         });
       }
+      await this.reviews.scheduleInitial(tx, userId, questionId);
     });
 
     return this.getAnalysis(userId, questionId);

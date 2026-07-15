@@ -58,8 +58,12 @@ describe('QuestionsService', () => {
     updateMany: questionUpdateManyMock,
     update: jest.fn(),
   };
+  const reviewTask = {
+    updateMany: jest.fn(),
+  };
   const prisma = {
     question,
+    reviewTask,
     $transaction: jest.fn(),
   } as unknown as PrismaService;
   const examsService = {
@@ -143,6 +147,7 @@ describe('QuestionsService', () => {
       imageObjectKey: sampleQuestion.imageObjectKey,
     });
     questionUpdateManyMock.mockResolvedValue({ count: 1 });
+    reviewTask.updateMany.mockResolvedValue({ count: 0 });
     deleteObjectMock.mockRejectedValue(new Error('storage unavailable'));
 
     await expect(
